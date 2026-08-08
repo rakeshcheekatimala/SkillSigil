@@ -6,7 +6,7 @@ The living registry of agentic skills. Publish via GitHub, scan with [SkillTrust
 
 - **Next.js 16** (App Router) on **Cloudflare Workers** via `@opennextjs/cloudflare`
 - Mostly **SSG/ISR** pages + client islands for upvotes / search / publish
-- Design language: Hikari-clean light SaaS + 21st.dev catalog craft (Geist, zinc, teal trust accent)
+- Design language: Hikari-clean light SaaS with (Geist, zinc, teal trust accent)
 
 ## Develop
 
