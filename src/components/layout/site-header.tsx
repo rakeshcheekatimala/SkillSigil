@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils";
 
 const links = [
   { href: "/skills", label: "Explore" },
-  { href: "/skills?sort=trending", label: "Trending" },
+  { href: "/scan", label: "Scan" },
+  { href: "/rules", label: "Rules" },
   { href: "/publish", label: "Publish" },
 ];
 
@@ -43,9 +44,12 @@ export async function SiteHeader() {
           </Link>
           {user ? (
             <div className="flex items-center gap-2">
-              <span className="hidden font-mono text-xs text-muted-foreground sm:inline">
+              <Link
+                href="/me"
+                className="hidden font-mono text-xs text-muted-foreground transition-colors hover:text-foreground sm:inline"
+              >
                 @{user.username}
-              </span>
+              </Link>
               {/* Full document navigation so Set-Cookie / clear is applied */}
               <a
                 href="/api/auth/logout"

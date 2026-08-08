@@ -19,6 +19,12 @@ export async function GET(request: Request) {
       ? nextPath
       : "/publish";
 
+  if (!clientId && process.env.NODE_ENV === "production") {
+    return NextResponse.redirect(
+      new URL("/?auth_error=oauth_not_configured", origin),
+    );
+  }
+
   if (clientId) {
     const redirectUri = `${origin}/api/auth/github/callback`;
     const url = new URL("https://github.com/login/oauth/authorize");

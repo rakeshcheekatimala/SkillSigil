@@ -8,7 +8,8 @@ export type ParsedGithubSkillUrl = {
 export function parseGithubSkillUrl(input: string): ParsedGithubSkillUrl | null {
   try {
     const url = new URL(input.trim());
-    if (!url.hostname.includes("github.com")) return null;
+    const host = url.hostname.toLowerCase();
+    if (host !== "github.com" && host !== "www.github.com") return null;
     const parts = url.pathname.split("/").filter(Boolean);
     if (parts.length < 2) return null;
     const [owner, repo, maybeTree, ref, ...rest] = parts;

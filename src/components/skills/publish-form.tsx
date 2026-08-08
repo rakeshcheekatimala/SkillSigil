@@ -38,6 +38,8 @@ export function PublishForm({ signedInAs }: { signedInAs: string }) {
         code?: string;
         status?: string;
         scanMode?: string;
+        next?: string;
+        visibility?: string;
       };
       if (res.status === 401) {
         window.location.href = "/api/auth/github?next=/publish";
@@ -47,13 +49,13 @@ export function PublishForm({ signedInAs }: { signedInAs: string }) {
       setStatus("queued");
       setMessage(
         data.slug
-          ? `Scan ${data.status ?? "queued"} via ${data.scanMode ?? "pipeline"}. Redirecting…`
+          ? `Private draft created. Scan ${data.status ?? "queued"} — opening the guided workspace…`
           : "Accepted for scan.",
       );
       if (data.slug) {
         window.setTimeout(() => {
-          window.location.href = `/skills/${data.slug}`;
-        }, 900);
+          window.location.href = data.next || `/publish/${data.slug}`;
+        }, 700);
       }
     } catch (err) {
       setStatus("error");
@@ -71,8 +73,9 @@ export function PublishForm({ signedInAs }: { signedInAs: string }) {
           Signed in as{" "}
           <span className="font-mono text-foreground">@{signedInAs}</span>.
           Point us at a GitHub path that contains a{" "}
-          <span className="font-mono text-xs">SKILL.md</span>. We scan it before
-          it becomes discoverable.
+          <span className="font-mono text-xs">SKILL.md</span>. We create a
+          private draft, scan it, and only list it after you admit a passing
+          result — nothing is discoverable until then.
         </p>
       </div>
 
@@ -128,7 +131,7 @@ export function PublishForm({ signedInAs }: { signedInAs: string }) {
             Scanning…
           </>
         ) : (
-          "Submit for scan"
+          "Create private draft"
         )}
       </Button>
 

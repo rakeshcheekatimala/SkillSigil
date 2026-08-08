@@ -81,7 +81,7 @@ export async function GET(
     return svgResponse(renderBadge("unavailable", COLOR.unknown), 30);
   }
 
-  if (!skill) {
+  if (!skill || skill.visibility !== "public") {
     return svgResponse(renderBadge("not listed", COLOR.unknown), 300);
   }
 

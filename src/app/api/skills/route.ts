@@ -10,6 +10,7 @@ import {
   resolveCommitSha,
 } from "@/lib/github";
 import { rateLimit } from "@/lib/rate-limit";
+import { recordSkillEvent } from "@/lib/events";
 import { queueOrRunScan } from "@/lib/scan/pipeline";
 import { listSkills, slugify } from "@/lib/skills";
 
@@ -23,7 +24,8 @@ export async function GET(request: Request) {
       ? sortParam
       : "trending";
 
-  const list = await listSkills({ q, category, sort });
+  // Public catalog never includes drafts.
+  const list = await listSkills({ q, category, sort, visibility: "public" });
   return NextResponse.json({ skills: list });
 }
 
@@ -123,6 +125,10 @@ export async function POST(request: Request) {
     slug = `${baseSlug}-${i + 2}`;
   }
 
+  // Always start as a draft. Listing is an explicit admission step after the
+  // publisher has reviewed findings — visibility is not client-controlled.
+  const visibility = "draft" as const;
+
   const [skill] = await db
     .insert(skills)
     .values({
@@ -140,6 +146,8 @@ export async function POST(request: Request) {
       category: body.data.category || "Productivity",
       tags: [],
       status: "pending_scan",
+      visibility,
+      upstreamSha: commitSha,
     })
     .returning();
 
@@ -151,6 +159,15 @@ export async function POST(request: Request) {
       status: "queued",
     })
     .returning();
+
+  await recordSkillEvent({
+    skillId: skill.id,
+    kind: "draft_created",
+    toStatus: "pending_scan",
+    toCommitSha: commitSha,
+    scanId: scan.id,
+    detail: { visibility },
+  });
 
   const appUrl = process.env.APP_URL || new URL(request.url).origin;
   const scanResult = await queueOrRunScan({
@@ -176,9 +193,11 @@ export async function POST(request: Request) {
       ok: true,
       slug: skill.slug,
       status: refreshed[0]?.status ?? "pending_scan",
+      visibility: refreshed[0]?.visibility ?? "draft",
       riskScore: refreshed[0]?.riskScore ?? 0,
       scanMode: scanResult.mode,
       publisher: session.username,
+      next: `/publish/${skill.slug}`,
     },
     { status: 202 },
   );

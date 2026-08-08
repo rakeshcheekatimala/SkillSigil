@@ -18,8 +18,10 @@ export type Skill = {
   repo: string;
   commitSha: string;
   status: ScanStatus;
+  visibility?: "draft" | "public";
   riskScore: number;
   upvoteCount: number;
+  starCount?: number;
   downloadCount: number;
   createdAt: string;
   findingsSummary?: string;

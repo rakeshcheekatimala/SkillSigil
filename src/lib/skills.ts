@@ -1,6 +1,13 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { scans, skills, users, type ScanRow, type SkillRow } from "@/db/schema";
+import {
+  scans,
+  skillEvents,
+  skills,
+  users,
+  type ScanRow,
+  type SkillRow,
+} from "@/db/schema";
 import type { ScanStatus } from "@/data/skills";
 import {
   countSeverities,
@@ -10,6 +17,8 @@ import {
   type NormalisedFinding,
   type SeverityCounts,
 } from "@/lib/trust/decision";
+
+export type SkillVisibility = "draft" | "public";
 
 export type SkillView = {
   id: string;
@@ -22,16 +31,18 @@ export type SkillView = {
   repo: string;
   commitSha: string;
   status: ScanStatus;
+  visibility: SkillVisibility;
   riskScore: number;
   upvoteCount: number;
+  starCount: number;
   downloadCount: number;
   createdAt: string;
   findingsSummary?: string;
   counts: SeverityCounts;
 };
 
-/** Everything a trust report or certificate needs, in one shape. */
 export type SkillDetail = SkillView & {
+  ownerUserId: string;
   fullCommitSha: string;
   subpath: string;
   findings: NormalisedFinding[];
@@ -43,6 +54,12 @@ export type SkillDetail = SkillView & {
     completedAt: Date | null;
     error: string | null;
   } | null;
+  admission: {
+    digestUri: string | null;
+    signature: string | null;
+    signedAt: string | null;
+    scanId: string | null;
+  } | null;
 };
 
 function mapStatus(status: string): ScanStatus {
@@ -53,12 +70,14 @@ function mapStatus(status: string): ScanStatus {
   return "pending";
 }
 
+function mapVisibility(value: string): SkillVisibility {
+  return value === "draft" ? "draft" : "public";
+}
+
 export function toSkillView(
   row: SkillRow,
   author: { username: string; avatarUrl: string | null },
-  scan?: {
-    findings?: unknown;
-  } | null,
+  scan?: { findings?: unknown } | null,
 ): SkillView {
   const findings = scan ? normaliseFindings(scan.findings) : [];
 
@@ -77,8 +96,10 @@ export function toSkillView(
     repo: `${row.repoOwner}/${row.repoName}`,
     commitSha: row.commitSha.slice(0, 7) || row.commitSha,
     status: mapStatus(row.status),
+    visibility: mapVisibility(row.visibility),
     riskScore: row.riskScore,
     upvoteCount: row.upvoteCount,
+    starCount: row.starCount,
     downloadCount: row.downloadCount,
     createdAt: row.createdAt.toISOString().slice(0, 10),
     findingsSummary: scan ? findingsSummaryText(scan.findings) : undefined,
@@ -92,12 +113,22 @@ export async function listSkills(opts?: {
   sort?: "trending" | "newest" | "downloads";
   status?: ScanStatus;
   limit?: number;
+  /** Defaults to public-only. Pass `"all"` only for owner dashboards. */
+  visibility?: "public" | "draft" | "all";
+  ownerUserId?: string;
 }): Promise<SkillView[]> {
   const db = getDb();
   const q = opts?.q?.trim();
   const category = opts?.category;
+  const visibility = opts?.visibility ?? "public";
 
   const conditions = [];
+  if (visibility !== "all") {
+    conditions.push(eq(skills.visibility, visibility));
+  }
+  if (opts?.ownerUserId) {
+    conditions.push(eq(skills.ownerUserId, opts.ownerUserId));
+  }
   if (category && category !== "All") {
     conditions.push(eq(skills.category, category));
   }
@@ -157,9 +188,21 @@ async function loadSkillRow(slug: string) {
   return rows[0] ?? null;
 }
 
-export async function getSkillBySlug(slug: string): Promise<SkillView | null> {
+/**
+ * Public catalog access. Drafts are invisible unless the caller is the owner.
+ */
+export async function getSkillBySlug(
+  slug: string,
+  viewerUserId?: string | null,
+): Promise<SkillView | null> {
   const row = await loadSkillRow(slug);
   if (!row) return null;
+  if (
+    row.skill.visibility === "draft" &&
+    row.skill.ownerUserId !== viewerUserId
+  ) {
+    return null;
+  }
   return toSkillView(
     row.skill,
     { username: row.username, avatarUrl: row.avatarUrl },
@@ -167,9 +210,18 @@ export async function getSkillBySlug(slug: string): Promise<SkillView | null> {
   );
 }
 
-export async function getSkillDetail(slug: string): Promise<SkillDetail | null> {
+export async function getSkillDetail(
+  slug: string,
+  viewerUserId?: string | null,
+): Promise<SkillDetail | null> {
   const row = await loadSkillRow(slug);
   if (!row) return null;
+  if (
+    row.skill.visibility === "draft" &&
+    row.skill.ownerUserId !== viewerUserId
+  ) {
+    return null;
+  }
 
   const scan = row.scan as ScanRow | null;
   const view = toSkillView(
@@ -178,8 +230,21 @@ export async function getSkillDetail(slug: string): Promise<SkillDetail | null> 
     scan,
   );
 
+  const db = getDb();
+  const admissionRows = await db
+    .select()
+    .from(skillEvents)
+    .where(
+      and(eq(skillEvents.skillId, row.skill.id), eq(skillEvents.kind, "admitted")),
+    )
+    .orderBy(desc(skillEvents.createdAt))
+    .limit(1);
+  const admission = admissionRows[0];
+  const detail = (admission?.detail ?? {}) as Record<string, unknown>;
+
   return {
     ...view,
+    ownerUserId: row.skill.ownerUserId,
     fullCommitSha: row.skill.commitSha,
     subpath: row.skill.subpath,
     findings: scan ? normaliseFindings(scan.findings) : [],
@@ -191,6 +256,19 @@ export async function getSkillDetail(slug: string): Promise<SkillDetail | null> 
           durationMs: scan.durationMs,
           completedAt: scan.completedAt,
           error: scan.error,
+        }
+      : null,
+    admission: admission
+      ? {
+          digestUri:
+            typeof detail.digestUri === "string" ? detail.digestUri : null,
+          signature:
+            typeof detail.signature === "string" ? detail.signature : null,
+          signedAt:
+            typeof detail.signedAt === "string"
+              ? detail.signedAt
+              : admission.createdAt.toISOString(),
+          scanId: admission.scanId,
         }
       : null,
   };
@@ -208,4 +286,8 @@ export function slugify(input: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 64);
+}
+
+export function canAdmit(status: string): boolean {
+  return status === "passed";
 }

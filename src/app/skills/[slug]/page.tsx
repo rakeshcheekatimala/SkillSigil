@@ -3,16 +3,25 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   ArrowLeft,
+  ArrowUpRight,
   GitBranch,
   Hash,
+  SealCheck,
 } from "@phosphor-icons/react/dist/ssr";
-import { TrustBadge } from "@/components/ui/trust-badge";
-import { UpvoteButton } from "@/components/skills/upvote-button";
+import { FindingsTable } from "@/components/trust/findings-table";
 import { InstallButton } from "@/components/skills/install-button";
+import { StarButton } from "@/components/skills/star-button";
+import { UpvoteButton } from "@/components/skills/upvote-button";
+import { CopyField } from "@/components/ui/copy-field";
+import { SeverityCountsRow } from "@/components/ui/severity-counts";
+import { TrustBadge } from "@/components/ui/trust-badge";
 import { formatCount } from "@/lib/utils";
 import { getSession } from "@/lib/auth";
-import { getSkillBySlug, getSkillRowBySlug } from "@/lib/skills";
+import { getSkillDetail } from "@/lib/skills";
 import { hasUpvoted } from "@/lib/upvotes";
+import { hasStarred } from "@/lib/stars";
+import { badgeSnippet } from "@/lib/trust/sigil";
+import { decisionFor } from "@/lib/trust/decision";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +33,8 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const skill = await getSkillBySlug(slug);
+  const session = await getSession();
+  const skill = await getSkillDetail(slug, session?.id);
   if (!skill) return { title: "Skill not found" };
   return {
     title: skill.name,
@@ -34,31 +44,57 @@ export async function generateMetadata({
 
 export default async function SkillDetailPage({ params }: PageProps) {
   const { slug } = await params;
-  const skill = await getSkillBySlug(slug);
+  const session = await getSession();
+  const skill = await getSkillDetail(slug, session?.id);
   if (!skill) notFound();
 
-  const session = await getSession();
-  const row = await getSkillRowBySlug(slug);
-  const initiallyUpvoted =
-    session && row ? await hasUpvoted(session.id, row.id) : false;
+  const isOwner = session?.id === skill.ownerUserId;
+  const initiallyUpvoted = session
+    ? await hasUpvoted(session.id, skill.id)
+    : false;
+  const initiallyStarred = session
+    ? await hasStarred(session.id, skill.id)
+    : false;
+
+  const origin =
+    process.env.APP_URL?.replace(/\/$/, "") || "https://skillsigil.dev";
+  const decision = decisionFor(skill.status);
 
   return (
     <article className="mx-auto max-w-[1400px] px-5 py-12 sm:px-8 sm:py-16">
       <Link
-        href="/skills"
+        href={skill.visibility === "draft" ? "/me" : "/skills"}
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
-        Back to explore
+        {skill.visibility === "draft" ? "Back to drafts" : "Back to explore"}
       </Link>
+
+      {skill.visibility === "draft" && (
+        <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-warning">
+          Private draft — invisible in the public catalog.{" "}
+          <Link
+            href={`/publish/${skill.slug}`}
+            className="font-medium underline"
+          >
+            Open the guided workspace
+          </Link>{" "}
+          to remediate and admit.
+        </div>
+      )}
 
       <div className="mt-8 grid gap-12 lg:grid-cols-[1fr_320px] lg:gap-16">
         <div>
           <div className="flex flex-wrap items-center gap-3">
-            <TrustBadge status={skill.status} />
+            <TrustBadge status={skill.status} showCode />
             <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium">
               {skill.category}
             </span>
+            {skill.visibility === "draft" && (
+              <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-warning ring-1 ring-inset ring-warning/20">
+                Draft
+              </span>
+            )}
           </div>
 
           <h1 className="mt-4 text-4xl font-semibold tracking-tight sm:text-5xl">
@@ -69,62 +105,112 @@ export default async function SkillDetailPage({ params }: PageProps) {
           </p>
 
           <div className="mt-8 flex flex-wrap gap-3">
-            <UpvoteButton
-              slug={skill.slug}
-              initialCount={skill.upvoteCount}
-              initiallyUpvoted={initiallyUpvoted}
-            />
-            <InstallButton slug={skill.slug} />
+            {skill.visibility === "public" && (
+              <>
+                <UpvoteButton
+                  slug={skill.slug}
+                  initialCount={skill.upvoteCount}
+                  initiallyUpvoted={initiallyUpvoted}
+                />
+                <StarButton
+                  slug={skill.slug}
+                  initialCount={skill.starCount}
+                  initiallyStarred={initiallyStarred}
+                />
+                <InstallButton slug={skill.slug} />
+              </>
+            )}
+            {isOwner && (
+              <Link
+                href={`/publish/${skill.slug}`}
+                className="inline-flex h-10 items-center gap-2 rounded-md border border-border px-4 text-sm font-medium hover:bg-muted"
+              >
+                <SealCheck className="size-4" />
+                Guided workspace
+              </Link>
+            )}
           </div>
 
           <div className="mt-12 space-y-6 border-t border-border pt-10">
-            <h2 className="text-lg font-semibold tracking-tight">
-              Trust report
-            </h2>
-            <div className="rounded-xl border border-border bg-muted/30 p-5">
-              <div className="flex flex-wrap items-end justify-between gap-4">
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Risk score
-                  </p>
-                  <p className="mt-1 font-mono text-4xl font-semibold tracking-tight text-foreground">
-                    {skill.status === "pending" ? "—" : skill.riskScore}
-                  </p>
-                </div>
-                <TrustBadge status={skill.status} />
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight">
+                  Trust report
+                </h2>
+                <p className="mt-1.5 max-w-xl text-sm text-muted-foreground">
+                  {decision.meaning}
+                </p>
               </div>
-              <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+              <SeverityCountsRow counts={skill.counts} emphasiseZero />
+            </div>
+
+            <div className="rounded-xl border border-border bg-muted/30 p-5">
+              <p className="text-sm leading-relaxed text-muted-foreground">
                 {skill.findingsSummary ??
                   (skill.status === "pending"
-                    ? "SkillTrustOps scan is queued. This skill is not yet discoverable in trending."
-                    : "Deterministic static scan via SkillTrustOps / local static gates.")}
+                    ? "Scan is queued. Absence of findings here is not a pass."
+                    : "Deterministic static scan. The skill content was not executed.")}
               </p>
               <dl className="mt-6 grid gap-3 text-sm sm:grid-cols-2">
                 <div className="rounded-lg border border-border bg-background px-3 py-2.5">
                   <dt className="text-xs text-muted-foreground">Policy</dt>
-                  <dd className="mt-0.5 font-mono text-xs">recommended-v2</dd>
+                  <dd className="mt-0.5 font-mono text-xs">
+                    {skill.scan?.policyHash ?? "recommended-v2"}
+                  </dd>
                 </div>
                 <div className="rounded-lg border border-border bg-background px-3 py-2.5">
                   <dt className="text-xs text-muted-foreground">Scanner</dt>
-                  <dd className="mt-0.5 font-mono text-xs">skilltrustops</dd>
+                  <dd className="mt-0.5 font-mono text-xs">
+                    {skill.scan?.toolVersion ?? "skilltrustops"}
+                  </dd>
                 </div>
               </dl>
             </div>
+
+            {skill.findings.length > 0 && (
+              <FindingsTable findings={skill.findings} />
+            )}
           </div>
 
-          <div className="mt-10 space-y-3">
-            <h2 className="text-lg font-semibold tracking-tight">Tags</h2>
-            <div className="flex flex-wrap gap-2">
-              {skill.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="rounded-full border border-border px-3 py-1 font-mono text-xs text-muted-foreground"
-                >
-                  {tag}
-                </span>
-              ))}
+          {skill.visibility === "public" && skill.admission && (
+            <div className="mt-10 space-y-4 border-t border-border pt-10">
+              <h2 className="text-lg font-semibold tracking-tight">Sigil</h2>
+              <p className="text-sm text-muted-foreground">
+                Registry-issued attestation for the admitted commit. Embed the
+                badge in your README.
+              </p>
+              {skill.admission.digestUri && (
+                <CopyField label="Digest" value={skill.admission.digestUri} />
+              )}
+              <CopyField
+                label="README badge"
+                value={badgeSnippet(origin, skill.slug)}
+              />
+              <Link
+                href={`/cert/${skill.slug}`}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline"
+              >
+                Open certificate
+                <ArrowUpRight className="size-3.5" />
+              </Link>
             </div>
-          </div>
+          )}
+
+          {skill.tags.length > 0 && (
+            <div className="mt-10 space-y-3">
+              <h2 className="text-lg font-semibold tracking-tight">Tags</h2>
+              <div className="flex flex-wrap gap-2">
+                {skill.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="rounded-full border border-border px-3 py-1 font-mono text-xs text-muted-foreground"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <aside className="space-y-6 lg:pt-2">
@@ -154,6 +240,10 @@ export default async function SkillDetailPage({ params }: PageProps) {
                 <dd className="font-medium">{formatCount(skill.upvoteCount)}</dd>
               </div>
               <div className="flex justify-between">
+                <dt className="text-muted-foreground">Stars</dt>
+                <dd className="font-medium">{formatCount(skill.starCount)}</dd>
+              </div>
+              <div className="flex justify-between">
                 <dt className="text-muted-foreground">Downloads</dt>
                 <dd className="font-medium">
                   {formatCount(skill.downloadCount)}
@@ -166,16 +256,17 @@ export default async function SkillDetailPage({ params }: PageProps) {
             </dl>
           </div>
 
-          <div className="rounded-xl border border-dashed border-border p-5">
-            <h2 className="text-sm font-semibold">IDE install</h2>
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              Copy the manifest URL and paste into your agent or IDE skill
-              installer.
-            </p>
-            <code className="mt-3 block overflow-x-auto rounded-md bg-muted px-2.5 py-2 font-mono text-[11px] text-foreground/80">
-              /api/skills/{skill.slug}/manifest
-            </code>
-          </div>
+          {skill.visibility === "public" && (
+            <div className="rounded-xl border border-dashed border-border p-5">
+              <h2 className="text-sm font-semibold">IDE install</h2>
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                No account required. Copy the manifest URL into your agent.
+              </p>
+              <code className="mt-3 block overflow-x-auto rounded-md bg-muted px-2.5 py-2 font-mono text-[11px] text-foreground/80">
+                /api/skills/{skill.slug}/manifest
+              </code>
+            </div>
+          )}
         </aside>
       </div>
     </article>

@@ -27,11 +27,8 @@ export function SiteFooter() {
                 </Link>
               </li>
               <li>
-                <Link
-                  href="/skills?sort=trending"
-                  className="hover:text-foreground"
-                >
-                  Trending
+                <Link href="/me" className="hover:text-foreground">
+                  Your workspace
                 </Link>
               </li>
             </ul>
@@ -40,17 +37,19 @@ export function SiteFooter() {
             <p className="font-medium text-foreground">Trust</p>
             <ul className="space-y-2 text-muted-foreground">
               <li>
-                <a
-                  href="https://github.com/rakeshcheekatimala/skilltrustops"
-                  className="hover:text-foreground"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  SkillTrustOps
-                </a>
+                <Link href="/scan" className="hover:text-foreground">
+                  Scan a skill
+                </Link>
               </li>
               <li>
-                <span className="text-muted-foreground/80">Scan policy</span>
+                <Link href="/rules" className="hover:text-foreground">
+                  Rule catalogue
+                </Link>
+              </li>
+              <li>
+                <Link href="/methodology" className="hover:text-foreground">
+                  Methodology
+                </Link>
               </li>
             </ul>
           </div>

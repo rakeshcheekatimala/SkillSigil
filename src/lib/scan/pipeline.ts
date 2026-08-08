@@ -5,6 +5,7 @@ import {
   dispatchScanWorkflow,
   fetchSkillMarkdown,
 } from "@/lib/github";
+import { recordSkillEvent } from "@/lib/events";
 import { localStaticScan } from "@/lib/scan/local-static-scan";
 import { PREFLIGHT_POLICY_HASH, PREFLIGHT_VERSION } from "@/lib/scan/preflight";
 export { signScanPayload, verifyScanSignature } from "@/lib/scan/signature";
@@ -126,6 +127,12 @@ export async function completeScan(input: {
     })
     .where(eq(scans.id, input.scanId));
 
+  const previous = await db
+    .select({ status: skills.status, commitSha: skills.commitSha })
+    .from(skills)
+    .where(eq(skills.id, input.skillId))
+    .limit(1);
+
   await db
     .update(skills)
     .set({
@@ -133,7 +140,40 @@ export async function completeScan(input: {
       riskScore: input.score,
       latestScanId: input.scanId,
       commitSha: input.commitSha,
+      upstreamSha: input.commitSha,
+      lastCheckedAt: new Date(),
       updatedAt: new Date(),
     })
     .where(eq(skills.id, input.skillId));
+
+  const fromStatus = previous[0]?.status;
+  await recordSkillEvent({
+    skillId: input.skillId,
+    kind: "scan_completed",
+    fromStatus: fromStatus ?? null,
+    toStatus: input.status,
+    fromCommitSha: previous[0]?.commitSha ?? null,
+    toCommitSha: input.commitSha,
+    scanId: input.scanId,
+    detail: { score: input.score },
+  });
+
+  if (
+    fromStatus === "passed" &&
+    (input.status === "failed" || input.status === "flagged")
+  ) {
+    await db
+      .update(skills)
+      .set({ regressedAt: new Date() })
+      .where(eq(skills.id, input.skillId));
+    await recordSkillEvent({
+      skillId: input.skillId,
+      kind: "regressed",
+      fromStatus,
+      toStatus: input.status,
+      fromCommitSha: previous[0]?.commitSha ?? null,
+      toCommitSha: input.commitSha,
+      scanId: input.scanId,
+    });
+  }
 }

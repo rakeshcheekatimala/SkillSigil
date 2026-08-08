@@ -10,7 +10,7 @@ export async function GET(
 ) {
   const { slug } = await context.params;
   const skill = await getSkillRowBySlug(slug);
-  if (!skill) {
+  if (!skill || skill.visibility !== "public") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
