@@ -58,8 +58,34 @@ function stepIndex(skill: GuidedSkill, admitted: boolean): number {
   if (admitted || skill.visibility === "public") return 4;
   if (skill.status === "pending") return 1;
   if (skill.status === "passed") return 4;
+  if (skill.status === "error") return 3;
   if (skill.findings.length > 0 || skill.status === "failed") return 3;
   return 2;
+}
+
+function preflightGateState(status: ScanStatus): "passed" | "findings" | "not-assessed" {
+  if (status === "passed") return "passed";
+  if (status === "pending" || status === "error") return "not-assessed";
+  return "findings";
+}
+
+function preflightGateDetail(
+  status: ScanStatus,
+  summary: string | undefined,
+): string {
+  if (status === "passed") {
+    return "No findings under the configured policy for this commit.";
+  }
+  if (status === "error") {
+    return (
+      summary ??
+      "The scanner could not fetch or read SKILL.md. Point the URL at the directory that contains SKILL.md, then rescan."
+    );
+  }
+  if (status === "pending") {
+    return "Scan in progress — no gate decision yet.";
+  }
+  return "Resolve every finding before the skill can be listed.";
 }
 
 export function GuidedWorkspace({ skill }: { skill: GuidedSkill }) {
@@ -152,7 +178,9 @@ export function GuidedWorkspace({ skill }: { skill: GuidedSkill }) {
             ? "border-accent/25 bg-accent-soft/40"
             : status === "failed" || status === "flagged"
               ? "border-destructive/25 bg-red-50/50"
-              : "border-border bg-muted/30",
+              : status === "error"
+                ? "border-warning/30 bg-amber-50/40"
+                : "border-border bg-muted/30",
         )}
       >
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -175,7 +203,16 @@ export function GuidedWorkspace({ skill }: { skill: GuidedSkill }) {
           </div>
           <div className="flex flex-col items-end gap-2">
             <TrustBadge status={status} showCode />
-            <SeverityCountsRow counts={counts} emphasiseZero />
+            {status === "error" ? (
+              <span className="font-mono text-[11px] text-warning">
+                Scan did not complete
+              </span>
+            ) : (
+              <SeverityCountsRow
+                counts={counts}
+                emphasiseZero={status !== "pending"}
+              />
+            )}
           </div>
         </div>
 
@@ -234,6 +271,22 @@ export function GuidedWorkspace({ skill }: { skill: GuidedSkill }) {
         )}
       </section>
 
+      {status === "error" && (
+        <section className="rounded-xl border border-warning/30 bg-amber-50/40 p-6">
+          <h2 className="text-lg font-semibold tracking-tight">
+            Scan could not complete
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            {summary ??
+              "The registry could not fetch SKILL.md from the path you submitted. This is not a rule finding — fix the source path or add SKILL.md, then rescan."}
+          </p>
+          <p className="mt-3 font-mono text-xs text-muted-foreground">
+            Expected URL shape:{" "}
+            https://github.com/owner/repo/tree/branch/path/to/skill-directory
+          </p>
+        </section>
+      )}
+
       {findings.length > 0 && (
         <section>
           <h2 className="text-lg font-semibold tracking-tight">
@@ -254,16 +307,8 @@ export function GuidedWorkspace({ skill }: { skill: GuidedSkill }) {
           gates={[
             {
               name: "Structure + security preflight",
-              state:
-                status === "passed"
-                  ? "passed"
-                  : status === "pending"
-                    ? "not-assessed"
-                    : "findings",
-              detail:
-                status === "passed"
-                  ? "No findings under the configured policy for this commit."
-                  : "Resolve every finding before the skill can be listed.",
+              state: preflightGateState(status),
+              detail: preflightGateDetail(status, summary),
             },
             {
               name: "Publisher admission",

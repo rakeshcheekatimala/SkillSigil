@@ -32,6 +32,32 @@ export function parseGithubSkillUrl(input: string): ParsedGithubSkillUrl | null 
   }
 }
 
+/** Requires `/tree/<ref>/<skill-path>` — repo root URLs are rejected. */
+export function parseGithubSkillDirectoryUrl(
+  input: string,
+): ParsedGithubSkillUrl | null {
+  try {
+    const url = new URL(input.trim());
+    const host = url.hostname.toLowerCase();
+    if (host !== "github.com" && host !== "www.github.com") return null;
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (parts.length < 5) return null;
+    const [owner, repo, maybeTree, ref, ...rest] = parts;
+    if (maybeTree !== "tree" || !ref || rest.length === 0) return null;
+    return {
+      owner,
+      repo: repo.replace(/\.git$/, ""),
+      ref,
+      subpath: rest.join("/"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export const GITHUB_SKILL_URL_HINT =
+  "https://github.com/owner/repo/tree/main/path/to/skill-directory";
+
 export async function fetchRepoPermission(
   token: string,
   owner: string,

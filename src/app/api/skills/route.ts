@@ -6,7 +6,8 @@ import { scans, skills, users } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import {
   fetchRepoPermission,
-  parseGithubSkillUrl,
+  GITHUB_SKILL_URL_HINT,
+  parseGithubSkillDirectoryUrl,
   resolveCommitSha,
 } from "@/lib/github";
 import { rateLimit } from "@/lib/rate-limit";
@@ -68,10 +69,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const parsed = parseGithubSkillUrl(body.data.githubUrl);
+  const parsed = parseGithubSkillDirectoryUrl(body.data.githubUrl);
   if (!parsed) {
     return NextResponse.json(
-      { error: "Provide a valid GitHub URL" },
+      {
+        error: `Link must point at a skill directory containing SKILL.md (e.g. ${GITHUB_SKILL_URL_HINT}). Repo root URLs are not accepted.`,
+        code: "INVALID_SKILL_PATH",
+      },
       { status: 400 },
     );
   }

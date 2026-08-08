@@ -45,7 +45,7 @@ jobs:
 
       - name: Install SkillTrustOps
         run: |
-          uv tool install "git+https://github.com/rakeshcheekatimala/skilltrustops"
+          uv tool install "skilltrustops==1.4"
 
       - name: Run scan
         id: scan
@@ -61,7 +61,7 @@ jobs:
             SCAN_PATH="$TARGET"
           fi
           set +e
-          uvx --from "git+https://github.com/rakeshcheekatimala/skilltrustops" skilltrustops scan "$SCAN_PATH" --format json > "$GITHUB_WORKSPACE/report.json"
+          skilltrustops scan "$SCAN_PATH" --format json > "$GITHUB_WORKSPACE/report.json"
           CODE=$?
           set -e
           echo "exit_code=$CODE" >> "$GITHUB_OUTPUT"

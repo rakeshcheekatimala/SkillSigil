@@ -20,6 +20,15 @@ export function PublishForm({ signedInAs }: { signedInAs: string }) {
     setStatus("submitting");
     setMessage("");
 
+    const trimmed = url.trim();
+    if (!trimmed.includes("/tree/") || !/\/tree\/[^/]+\/.+/.test(trimmed)) {
+      setStatus("error");
+      setMessage(
+        "Link must point at a skill directory, not the repo root. Example: https://github.com/you/repo/tree/main/skills/my-skill",
+      );
+      return;
+    }
+
     try {
       const res = await fetch("/api/skills", {
         method: "POST",

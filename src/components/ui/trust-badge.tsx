@@ -39,7 +39,7 @@ export function TrustBadge({
     >
       <span className={cn("size-1.5 rounded-full", dotClass[decision.tone])} />
       {decision.label}
-      {showCode && (
+      {showCode && decision.code !== "inconclusive" && decision.code !== "in_progress" && (
         <span className="font-mono text-[10px] opacity-70">{decision.code}</span>
       )}
     </span>

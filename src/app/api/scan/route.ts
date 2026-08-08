@@ -3,7 +3,11 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
 import { skills } from "@/db/schema";
-import { fetchSkillMarkdown, parseGithubSkillUrl } from "@/lib/github";
+import {
+  fetchSkillMarkdown,
+  GITHUB_SKILL_URL_HINT,
+  parseGithubSkillDirectoryUrl,
+} from "@/lib/github";
 import { rateLimit } from "@/lib/rate-limit";
 import {
   MAX_INPUT_BYTES,
@@ -56,13 +60,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const target = parseGithubSkillUrl(parsedBody.data.url);
+  const target = parseGithubSkillDirectoryUrl(parsedBody.data.url);
   if (!target) {
     return NextResponse.json(
       {
-        error:
-          "That is not a GitHub URL. Paste a link to a directory containing SKILL.md.",
-        code: "INVALID_URL",
+        error: `Link must point at a skill directory containing SKILL.md (e.g. ${GITHUB_SKILL_URL_HINT}). Repo root URLs are not accepted.`,
+        code: "INVALID_SKILL_PATH",
       },
       { status: 400 },
     );
