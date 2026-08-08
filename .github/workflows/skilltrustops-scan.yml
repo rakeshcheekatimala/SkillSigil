@@ -1,0 +1,118 @@
+name: SkillTrustOps scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      skill_id:
+        required: true
+        type: string
+      scan_id:
+        required: true
+        type: string
+      owner:
+        required: true
+        type: string
+      repo:
+        required: true
+        type: string
+      ref:
+        required: true
+        type: string
+      subpath:
+        required: false
+        type: string
+        default: ""
+      commit_sha:
+        required: true
+        type: string
+      callback_url:
+        required: true
+        type: string
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout skill repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.owner }}/${{ inputs.repo }}
+          ref: ${{ inputs.commit_sha }}
+          path: skill-src
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install SkillTrustOps
+        run: |
+          uv tool install "git+https://github.com/rakeshcheekatimala/skilltrustops"
+
+      - name: Run scan
+        id: scan
+        working-directory: skill-src
+        run: |
+          TARGET="${{ inputs.subpath }}"
+          if [ -z "$TARGET" ]; then TARGET="."; fi
+          if [ -f "$TARGET/SKILL.md" ]; then
+            SCAN_PATH="$TARGET/SKILL.md"
+          elif [ -f "$TARGET" ]; then
+            SCAN_PATH="$TARGET"
+          else
+            SCAN_PATH="$TARGET"
+          fi
+          set +e
+          uvx --from "git+https://github.com/rakeshcheekatimala/skilltrustops" skilltrustops scan "$SCAN_PATH" --format json > "$GITHUB_WORKSPACE/report.json"
+          CODE=$?
+          set -e
+          echo "exit_code=$CODE" >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_WORKSPACE/report.json" || echo '{}' > "$GITHUB_WORKSPACE/report.json"
+
+      - name: Post callback
+        env:
+          SCAN_WEBHOOK_SECRET: ${{ secrets.SCAN_WEBHOOK_SECRET }}
+        run: |
+          python3 <<'PY'
+          import hashlib, hmac, json, os, urllib.request
+          report = {}
+          try:
+              with open("report.json") as f:
+                  report = json.load(f)
+          except Exception:
+              report = {}
+          exit_code = int("${{ steps.scan.outputs.exit_code or 1 }}")
+          skills = report.get("skills") or []
+          findings = []
+          failed = exit_code != 0
+          for s in skills:
+              if s.get("status") in ("fail", "failed", "error"):
+                  failed = True
+              for item in s.get("findings") or []:
+                  findings.append(item)
+          status = "failed" if failed else "passed"
+          score = 0 if status == "passed" else min(100, 20 + 15 * len(findings))
+          payload = {
+              "skill_id": "${{ inputs.skill_id }}",
+              "scan_id": "${{ inputs.scan_id }}",
+              "commit_sha": "${{ inputs.commit_sha }}",
+              "status": status,
+              "score": score,
+              "findings": {"summary": f"{len(findings)} finding(s)", "items": findings},
+              "tool_version": report.get("tool_version") or "skilltrustops",
+              "policy_hash": report.get("policy_hash"),
+              "duration_ms": report.get("duration_ms"),
+          }
+          body = json.dumps(payload).encode()
+          secret = os.environ["SCAN_WEBHOOK_SECRET"].encode()
+          sig = hmac.new(secret, body, hashlib.sha256).hexdigest()
+          req = urllib.request.Request(
+              "${{ inputs.callback_url }}",
+              data=body,
+              headers={
+                  "Content-Type": "application/json",
+                  "x-skillsigil-signature": sig,
+              },
+              method="POST",
+          )
+          with urllib.request.urlopen(req) as resp:
+              print(resp.status, resp.read())
+          PY
