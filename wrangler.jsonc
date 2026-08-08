@@ -1,0 +1,41 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"main": ".open-next/worker.js",
+	"name": "skillsigil",
+	"compatibility_date": "2024-09-23",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"workers_dev": true,
+	"preview_urls": true,
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	"vars": {
+		"APP_URL": "https://skillsigil.rakeshcheekatimala.workers.dev",
+		"SCAN_WORKFLOW_REPO": "rakeshcheekatimala/SkillSigil",
+		"SCAN_WORKFLOW_REF": "main"
+	},
+	"services": [
+		{
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "skillsigil"
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "NEXT_INC_CACHE_R2_BUCKET",
+			"bucket_name": "skillsigil-isr-cache"
+		},
+		{
+			"binding": "SKILL_ARTIFACTS",
+			"bucket_name": "skillsigil-artifacts"
+		},
+		{
+			"bucket_name": "skillsigil-isr-cache",
+			"binding": "skillsigil_isr_cache",
+			"remote": true
+		}
+	]
+}
