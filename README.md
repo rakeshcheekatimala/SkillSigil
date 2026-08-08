@@ -1,42 +1,77 @@
 # SkillSigil
 
-The living registry of agentic skills. Publish via GitHub, scan with [SkillTrustOps](https://github.com/rakeshcheekatimala/skilltrustops), discover, upvote, and install into your IDE.
+Registry for agentic skills: GitHub auth → publish → SkillTrustOps scan → discover / upvote / install.
 
-## Stack (zero-dollar tier)
+**Repo:** https://github.com/rakeshcheekatimala/SkillSigil.git  
+**DB:** Neon project `skillsigil` (`autumn-fire-29043878`)
 
-- **Next.js 16** (App Router) on **Cloudflare Workers** via `@opennextjs/cloudflare`
-- Mostly **SSG/ISR** pages + client islands for upvotes / search / publish
-- Design language: Hikari-clean light SaaS + 21st.dev catalog craft (Geist, zinc, teal trust accent)
-
-## Develop
+## Local ($0)
 
 ```bash
 pnpm install
+cp .env.example .env.local   # DATABASE_URL + SESSION_SECRET required
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open http://localhost:3000
 
-## Cloudflare preview / deploy
+The catalog starts **empty**. Sign in, then publish a real GitHub skill URL (directory containing `SKILL.md`). There is no seed/fake content.
 
-Create R2 buckets `skillsigil-isr-cache` and `skillsigil-artifacts`, then:
+### Working today without paid services
+
+| Feature | Status |
+| --- | --- |
+| Browse / search / trending | Neon-backed (empty until real publishes) |
+| Skill detail + trust report | Neon-backed |
+| Sign in | Full-page nav to demo session, or real GitHub OAuth if env set |
+| Publish via GitHub URL | Neon + local static scan (SkillTrustOps Actions when `GITHUB_TOKEN` set) |
+| Upvote (idempotent) | Neon composite PK + atomic CTE |
+| Rate limiting | Upstash if configured, else in-memory |
+| Manifest / install | Live |
+
+## Production Deployment
+
+**📖 See [DEPLOYMENT.md](./DEPLOYMENT.md) for the complete security-first deployment guide.**
+
+### Quick Deployment
+
+Pre-flight security check:
 
 ```bash
-pnpm preview   # local workerd
-pnpm deploy    # Workers
+./scripts/deploy-check.sh
 ```
 
-## Routes
+Deploy to Cloudflare Workers:
 
-| Route | Purpose |
+```bash
+pnpm wrangler login
+pnpm build
+pnpm deploy
+```
+
+### Essential Setup (Zero-Dollar Stack)
+
+1. **R2 Buckets**: `skillsigil-isr-cache`, `skillsigil-artifacts`
+2. **Secrets** (via `pnpm wrangler secret put`):
+   - `DATABASE_URL` (Neon Postgres with SSL)
+   - `SESSION_SECRET` (32+ chars, `openssl rand -base64 32`)
+   - `SCAN_WEBHOOK_SECRET` (32+ chars)
+   - `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` (production OAuth app)
+3. **GitHub Actions Secrets**:
+   - `SCAN_WEBHOOK_SECRET` (same as app)
+   - `SCAN_CALLBACK_URL` (`https://your-domain.com/api/webhooks/scan`)
+
+### Optional (Recommended)
+
+- **Upstash Redis**: Rate limiting (10K commands/day free)
+- **Upstash QStash**: Async scan dispatch
+- **GitHub PAT**: For Actions workflow dispatch (`actions:write` scope)
+
+## Scripts
+
+| Command | Purpose |
 | --- | --- |
-| `/` | Brand-first landing |
-| `/skills` | Search / trending / categories |
-| `/skills/[slug]` | Detail, trust report, upvote, install |
-| `/publish` | GitHub URL or zip submit |
-| `/api/skills` | List + submit (stub) |
-| `/api/skills/:slug/upvote` | Idempotent upvote stub |
-| `/api/skills/:slug/manifest` | IDE install manifest |
-| `/api/skills/:slug/install` | Download redirect |
-
-Backend wiring (Neon, Upstash, GitHub OAuth, Actions scan) follows the architecture plan; current API handlers are stubs with seed data for UI development.
+| `pnpm dev` | Local Next.js |
+| `pnpm build` | Production build |
+| `pnpm preview` | OpenNext + workerd local |
+| `pnpm deploy` | Deploy to Cloudflare Workers |
