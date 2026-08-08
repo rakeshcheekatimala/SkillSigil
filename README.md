@@ -5,8 +5,6 @@ Registry for agentic skills: GitHub auth → publish → SkillTrustOps scan → 
 **Repo:** https://github.com/rakeshcheekatimala/SkillSigil.git  
 **DB:** Neon project `skillsigil` (`autumn-fire-29043878`)
 
-## Local ($0)
-
 ```bash
 pnpm install
 cp .env.example .env.local   # DATABASE_URL + SESSION_SECRET required
