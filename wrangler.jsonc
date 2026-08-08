@@ -13,7 +13,7 @@
 		"binding": "ASSETS"
 	},
 	"vars": {
-		"APP_URL": "https://skillsigil.workers.dev",
+		"APP_URL": "https://skillsigil.rakeshcheekatimala.workers.dev",
 		"SCAN_WORKFLOW_REPO": "rakeshcheekatimala/SkillSigil",
 		"SCAN_WORKFLOW_REF": "main"
 	},
